@@ -67,15 +67,15 @@ class BPETokenizer:
         for part in parts:
             if not part:
                 continue
-            token_maybe = self.word2token.get(part,None)
+            token_maybe = self.word2token.get(part, None)
             if token_maybe is not None:
                 tokens.append(token_maybe)
                 continue
             for w in self.pre_tokenize_encode(part):
-                #print("w ", w)
+                # print("w ", w)
                 if not w:
                     continue
-                token_maybe = self.word2token.get(w,None)
+                token_maybe = self.word2token.get(w, None)
                 if token_maybe is not None:
                     tokens.append(token_maybe)
                     continue
@@ -87,47 +87,38 @@ class BPETokenizer:
                         merge_idxs[merge_idx] = merge_idxs.get(merge_idx, 0) + 1
 
                 while merge_idxs:
-                    #print("ww ", ww)
-                    #print("merge_idxs ", merge_idxs)
+                    # print("ww ", ww)
+                    # print("merge_idxs ", merge_idxs)
                     smallest_index = min(merge_idxs.keys())
                     pair = self.merges[smallest_index]
                     joined_pair = self.merge2joined[pair]
                     del merge_idxs[smallest_index]
-                    next_ww, merged_indices_old, merged_indices_new = self.get_merged_word(ww, pair, joined_pair)
-                    affected_old_first_indices = set()
-                    old_word_len = len(ww)
-                    for idx in merged_indices_old:
-                        if idx > 0:
-                            affected_old_first_indices.add(idx - 1)
-                        if idx < old_word_len - 2:
-                            affected_old_first_indices.add(idx + 1)
-                    for old_first_index in affected_old_first_indices:
+                    next_ww, affected_indices_old, affected_indices_new = (
+                        self.get_merged_word(ww, pair, joined_pair)
+                    )
+                    for old_first_index in affected_indices_old:
                         orig_pair = (ww[old_first_index], ww[old_first_index + 1])
                         if orig_pair == pair:
                             continue
-                        old_merge_idx = self.merges_dict.get(orig_pair,None)
+                        old_merge_idx = self.merges_dict.get(orig_pair, None)
                         if old_merge_idx is None:
                             continue
                         orig_cnt = merge_idxs[old_merge_idx]
                         if orig_cnt == 1:
                             del merge_idxs[old_merge_idx]
                         else:
-                            merge_idxs[old_merge_idx] = orig_cnt-1
-                    affected_new_first_indices = set()
-                    new_word_len = len(next_ww)
-                    for idx in merged_indices_new:
-                        if idx > 0:
-                            affected_new_first_indices.add(idx - 1)
-                        if idx < new_word_len - 1:
-                            affected_new_first_indices.add(idx)
-                    for new_first_index in affected_new_first_indices:
-                        new_pair = (next_ww[new_first_index], next_ww[new_first_index + 1])
-                        new_merge_idx = self.merges_dict.get(new_pair,None)
+                            merge_idxs[old_merge_idx] = orig_cnt - 1
+                    for new_first_index in affected_indices_new:
+                        new_pair = (
+                            next_ww[new_first_index],
+                            next_ww[new_first_index + 1],
+                        )
+                        new_merge_idx = self.merges_dict.get(new_pair, None)
                         if new_merge_idx is None:
                             continue
-                        merge_idxs[new_merge_idx] = merge_idxs.get(new_merge_idx,0)+1
+                        merge_idxs[new_merge_idx] = merge_idxs.get(new_merge_idx, 0) + 1
                     ww = next_ww
-                #print("ww ", ww)
+                # print("ww ", ww)
                 tokens.extend(map(self.word2token.get, ww))
         return tokens
 
@@ -218,17 +209,46 @@ class BPETokenizer:
     def get_merged_word(
         cls, word: Word, pair: Pair, joined_pair: bytes
     ) -> tuple[Word, list[int], list[int]]:
+        word_len = len(word)
+        if word_len == 2:
+            return joined_pair, [], []
+        current_w = [None] * word_len
+        affected_indices_old = []
+        affected_indices_new = []
         idx = 0
         current_idx = 0
-        word_len = len(word)
-        current_w = [None] * word_len
-        merged_indices_old = []
-        merged_indices_new = []
-        while idx < word_len - 1:
+        if (word[idx], word[idx + 1]) == pair:
+            current_w[current_idx] = joined_pair
+            affected_indices_old.append(idx + 1)
+            affected_indices_new.append(current_idx)
+            previous_was_merged = True
+            idx += 2
+        else:
+            current_w[current_idx] = word[idx]
+            previous_was_merged = False
+            idx += 1
+        current_idx += 1
+        while idx < word_len - 2:
             if (word[idx], word[idx + 1]) == pair:
                 current_w[current_idx] = joined_pair
-                merged_indices_old.append(idx)
-                merged_indices_new.append(current_idx)
+                if not previous_was_merged:
+                    affected_indices_old.append(idx - 1)
+                    affected_indices_new.append(current_idx - 1)
+                affected_indices_old.append(idx + 1)
+                affected_indices_new.append(current_idx)
+                previous_was_merged = True
+                idx += 2
+            else:
+                current_w[current_idx] = word[idx]
+                previous_was_merged = False
+                idx += 1
+            current_idx += 1
+        if idx < word_len - 1:
+            if (word[idx], word[idx + 1]) == pair:
+                current_w[current_idx] = joined_pair
+                if not previous_was_merged:
+                    affected_indices_old.append(idx - 1)
+                    affected_indices_new.append(current_idx - 1)
                 idx += 2
             else:
                 current_w[current_idx] = word[idx]
@@ -237,7 +257,11 @@ class BPETokenizer:
         if idx < word_len:
             current_w[current_idx] = word[idx]
             current_idx += 1
-        return tuple(current_w[:current_idx]), merged_indices_old, merged_indices_new
+        return (
+            tuple(current_w[:current_idx]),
+            affected_indices_old,
+            affected_indices_new,
+        )
 
     @classmethod
     def update_pair_counts_for_word(
@@ -245,22 +269,15 @@ class BPETokenizer:
         word_idx: int,
         old_word: Word,
         word_count: int,
-        merged_indices_old: list[int],
+        affected_indices_old: list[int],
         pair: Pair,
         new_word: Word,
-        merged_indices_new: list[int],
+        affected_indices_new: list[int],
         pair_counts: dict[Pair, int],
         pair_to_words: dict[Pair, dict[int, int]],
         updated_pairs: dict[Pair, int],
     ) -> None:
-        affected_old_first_indices = set()
-        old_word_len = len(old_word)
-        for idx in merged_indices_old:
-            if idx > 0:
-                affected_old_first_indices.add(idx - 1)
-            if idx < old_word_len - 2:
-                affected_old_first_indices.add(idx + 1)
-        for old_first_index in affected_old_first_indices:
+        for old_first_index in affected_indices_old:
             orig_pair = (old_word[old_first_index], old_word[old_first_index + 1])
             if orig_pair == pair:
                 continue
@@ -274,14 +291,7 @@ class BPETokenizer:
             else:
                 pair_counts[orig_pair] = new_cnt
                 pair_to_words[orig_pair][word_idx] -= 1
-        affected_new_first_indices = set()
-        new_word_len = len(new_word)
-        for idx in merged_indices_new:
-            if idx > 0:
-                affected_new_first_indices.add(idx - 1)
-            if idx < new_word_len - 1:
-                affected_new_first_indices.add(idx)
-        for new_first_index in affected_new_first_indices:
+        for new_first_index in affected_indices_new:
             new_pair = (new_word[new_first_index], new_word[new_first_index + 1])
             orig_cnt = pair_counts.get(new_pair, 0)
             pair_counts[new_pair] = orig_cnt + word_count
@@ -311,7 +321,7 @@ class BPETokenizer:
         updated_pairs = {}
         for w_idx in pair_to_words[pair]:
             w = idx2word[w_idx]
-            current_w, merged_indices_old, merged_indices_new = cls.get_merged_word(
+            current_w, affected_indices_old, affected_indices_new = cls.get_merged_word(
                 w, pair, joined_pair
             )
             idx2word[w_idx] = current_w
@@ -321,10 +331,10 @@ class BPETokenizer:
                 w_idx,
                 w,
                 word_count,
-                merged_indices_old,
+                affected_indices_old,
                 pair,
                 current_w,
-                merged_indices_new,
+                affected_indices_new,
                 pair_counts,
                 pair_to_words,
                 updated_pairs,

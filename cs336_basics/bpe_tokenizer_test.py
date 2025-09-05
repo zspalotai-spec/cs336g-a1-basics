@@ -78,20 +78,40 @@ class TestBPETokenizer(unittest.TestCase):
         max_pair = bpe_tokenizer.BPETokenizer.get_max_pair(count_pairs)
         assert max_pair == (b"s", b"t")
 
-    def test_get_merged_word(self):
-        new_word, merged_indices_old, merged_indices_new = (
+    def test_get_merged_word_beginning(self):
+        new_word, affected_indices_old, affected_indices_new = (
             bpe_tokenizer.BPETokenizer.get_merged_word(
                 (b"e", b"e", b"e", b"t"), (b"e", b"e"), b"ee"
             )
         )
         assert new_word == (b"ee", b"e", b"t")
-        assert merged_indices_old == [0]
-        assert merged_indices_new == [0]
+        assert affected_indices_old == [1]
+        assert affected_indices_new == [0]
+
+    def test_get_merged_word_middle(self):
+        new_word, affected_indices_old, affected_indices_new = (
+            bpe_tokenizer.BPETokenizer.get_merged_word(
+                (b"w", b"e", b"e", b"e", b"e", b"t"), (b"e", b"e"), b"ee"
+            )
+        )
+        assert new_word == (b"w", b"ee", b"ee", b"t")
+        assert affected_indices_old == [0,2,4]
+        assert affected_indices_new == [0,1,2]
+
+    def test_get_merged_word_end(self):
+        new_word, affected_indices_old, affected_indices_new = (
+            bpe_tokenizer.BPETokenizer.get_merged_word(
+                (b"e", b"e", b"e", b"t"), (b"e", b"t"), b"et"
+            )
+        )
+        assert new_word == (b"e", b"e", b"et")
+        assert affected_indices_old == [1]
+        assert affected_indices_new == [1]
 
     def test_update_pair_counts_for_word(self):
         old_word = (b"e", b"e", b"e", b"t")
         pair = (b"e", b"e")
-        new_word, merged_indices_old, merged_indices_new = (
+        new_word, affected_indices_old, affected_indices_new = (
             bpe_tokenizer.BPETokenizer.get_merged_word(
                 (b"e", b"e", b"e", b"t"), (b"e", b"e"), b"ee"
             )
@@ -117,10 +137,10 @@ class TestBPETokenizer(unittest.TestCase):
             word_idx=2,
             old_word=old_word,
             word_count=3,
-            merged_indices_old=merged_indices_old,
+            affected_indices_old=affected_indices_old,
             pair=pair,
             new_word=new_word,
-            merged_indices_new=merged_indices_new,
+            affected_indices_new=affected_indices_new,
             pair_counts=pair_counts,
             pair_to_words=pair2words,
             updated_pairs=updated_pairs,
