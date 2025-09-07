@@ -9,6 +9,7 @@ import numpy.typing as npt
 import torch
 from torch import Tensor
 
+from cs336_basics import attention
 from cs336_basics import bpe_tokenizer
 from cs336_basics import embedding
 from cs336_basics import linear
@@ -111,7 +112,7 @@ def run_scaled_dot_product_attention(
     Returns:
         Float[Tensor, " ... queries d_v"]: Output of SDPA
     """
-    raise NotImplementedError
+    return attention.attention(Q, K, V, mask)
 
 
 def run_multihead_self_attention(
