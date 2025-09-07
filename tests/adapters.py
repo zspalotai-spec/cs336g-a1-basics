@@ -20,6 +20,7 @@ from cs336_basics import ro_pe
 from cs336_basics import softmax
 from cs336_basics import swi_glu
 from cs336_basics import transformer_block
+from cs336_basics import transformer_lm
 
 
 def run_linear(
@@ -409,7 +410,45 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    m = transformer_lm.TransformerLm(
+        vocab_size, context_length, d_model, num_layers, num_heads, d_ff, rope_theta
+    )
+    state_dict = {}
+    state_dict["embed.W"] = weights["token_embeddings.weight"]
+    for l in range(num_layers):
+        m_key_prefix = f"layer{l}."
+        weights_prefix = f"layers.{l}."
+        state_dict.update(
+            {
+                f"{m_key_prefix}attn.qkv.W": pack(
+                    [
+                        weights[f"{weights_prefix}attn.q_proj.weight"],
+                        weights[f"{weights_prefix}attn.k_proj.weight"],
+                        weights[f"{weights_prefix}attn.v_proj.weight"],
+                    ],
+                    "* i j",
+                )[0],
+                f"{m_key_prefix}attn.wo.W": weights[
+                    f"{weights_prefix}attn.output_proj.weight"
+                ],
+                f"{m_key_prefix}attn_rms_norm.g": weights[
+                    f"{weights_prefix}ln1.weight"
+                ],
+                f"{m_key_prefix}ff.lin13.W": pack(
+                    [
+                        weights[f"{weights_prefix}ffn.w1.weight"],
+                        weights[f"{weights_prefix}ffn.w3.weight"],
+                    ],
+                    "* i j",
+                )[0],
+                f"{m_key_prefix}ff.lin2.W": weights[f"{weights_prefix}ffn.w2.weight"],
+                f"{m_key_prefix}ff_rms_norm.g": weights[f"{weights_prefix}ln2.weight"],
+            }
+        )
+    state_dict["final_rms_norm.g"] = weights["ln_final.weight"]
+    state_dict["final_linear.W"] = weights["lm_head.weight"]
+    m.load_state_dict(state_dict)
+    return m.forward(in_indices)
 
 
 def run_rmsnorm(
