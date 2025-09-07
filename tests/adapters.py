@@ -14,6 +14,7 @@ from cs336_basics import embedding
 from cs336_basics import linear
 from cs336_basics import rms_norm
 from cs336_basics import ro_pe
+from cs336_basics import softmax
 from cs336_basics import swi_glu
 
 
@@ -440,7 +441,7 @@ def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, "
         Float[Tensor, "..."]: Tensor of with the same shape as `in_features` with the output of
         softmax normalizing the specified `dim`.
     """
-    raise NotImplementedError
+    return softmax.softmax(in_features, dim)
 
 
 def run_cross_entropy(
