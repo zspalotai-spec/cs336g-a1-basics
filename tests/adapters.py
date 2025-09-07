@@ -12,6 +12,9 @@ from torch import Tensor
 from cs336_basics import bpe_tokenizer
 from cs336_basics import embedding
 from cs336_basics import linear
+from cs336_basics import rms_norm
+from cs336_basics import ro_pe
+from cs336_basics import swi_glu
 
 
 def run_linear(
@@ -33,8 +36,8 @@ def run_linear(
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
 
-    m = linear.Linear(d_in,d_out)
-    m.load_state_dict({'W':weights})
+    m = linear.Linear(d_in, d_out)
+    m.load_state_dict({"W": weights})
     return m.forward(in_features)
 
 
@@ -57,8 +60,8 @@ def run_embedding(
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
 
-    m = embedding.Embedding(vocab_size,d_model)
-    m.load_state_dict({'W':weights})
+    m = embedding.Embedding(vocab_size, d_model)
+    m.load_state_dict({"W": weights})
     return m.forward(token_ids)
 
 
@@ -84,14 +87,9 @@ def run_swiglu(
     Returns:
         Float[Tensor, "... d_model"]: Output embeddings of the same shape as the input embeddings.
     """
-    # Example:
-    # If your state dict keys match, you can use `load_state_dict()`
-    # swiglu.load_state_dict(weights)
-    # You can also manually assign the weights
-    # swiglu.w1.weight.data = w1_weight
-    # swiglu.w2.weight.data = w2_weight
-    # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
+    m = swi_glu.SwiGlu(d_model, d_ff)
+    m.load_state_dict({"lin1.W": w1_weight, "lin2.W": w2_weight, "lin3.W": w3_weight})
+    return m.forward(in_features)
 
 
 def run_scaled_dot_product_attention(
@@ -208,7 +206,8 @@ def run_rope(
     Returns:
         Float[Tensor, " ... sequence_length d_k"]: Tensor with RoPEd input.
     """
-    raise NotImplementedError
+    m = ro_pe.RotaryPositionalEmbedding(theta, d_k, max_seq_len)
+    return m.forward(in_query_or_key, token_positions)
 
 
 def run_transformer_block(
@@ -386,7 +385,9 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
+    m = rms_norm.RMSNorm(d_model, eps)
+    m.load_state_dict({"g": weights})
+    return m.forward(in_features)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
@@ -400,7 +401,7 @@ def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
         Float[Tensor,"..."]: of with the same shape as `in_features` with the output of applying
         SiLU to each element.
     """
-    raise NotImplementedError
+    return swi_glu.silu(in_features)
 
 
 def run_get_batch(
@@ -460,7 +461,9 @@ def run_cross_entropy(
     raise NotImplementedError
 
 
-def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
+def run_gradient_clipping(
+    parameters: Iterable[torch.nn.Parameter], max_l2_norm: float
+) -> None:
     """Given a set of parameters, clip their combined gradients to have l2 norm at most max_l2_norm.
 
     Args:
@@ -597,5 +600,7 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    tokenizer, _ = bpe_tokenizer.BPETokenizer.train(input_path,vocab_size,special_tokens)
+    tokenizer, _ = bpe_tokenizer.BPETokenizer.train(
+        input_path, vocab_size, special_tokens
+    )
     return tokenizer.vocab, tokenizer.merges
