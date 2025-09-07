@@ -19,8 +19,8 @@ class RotaryPositionalEmbedding(nn.Module):
         self.max_seq_len = max_seq_len
         self.device = device
         self.dtype = dtype
-        i = torch.arange(0, max_seq_len)
-        k = torch.arange(0, d_k // 2)
+        i = torch.arange(0, max_seq_len, device=device, dtype=dtype)
+        k = torch.arange(0, d_k // 2, device=device, dtype=dtype)
         theta_ik = torch.outer(i, torch.pow(theta, -2 * k  / d_k))
         rot_ik = torch.exp(1j * theta_ik)
         self.register_buffer("rot_ik", rot_ik, persistent=False)

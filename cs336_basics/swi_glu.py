@@ -23,8 +23,8 @@ class SwiGlu(nn.Module):
         self.hidden_features = hidden_features
         self.device = device
         self.dtype = dtype
-        lin13 = linear.Linear(in_features, hidden_features, 2)
-        lin2 = linear.Linear(hidden_features, in_features)
+        lin13 = linear.Linear(in_features, hidden_features, 2, device=device, dtype=dtype)
+        lin2 = linear.Linear(hidden_features, in_features, device=device, dtype=dtype)
         self.add_module('lin13', lin13)
         self.add_module('lin2', lin2)
 

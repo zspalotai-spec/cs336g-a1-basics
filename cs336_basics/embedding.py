@@ -19,7 +19,7 @@ class Embedding(nn.Module):
 
         W = nn.Parameter(
             nn.init.trunc_normal_(
-                torch.empty((num_embeddings, embedding_dim), dtype=dtype),
+                torch.empty((num_embeddings, embedding_dim), device=device, dtype=dtype),
                 mean=0.0,
                 std=1,
                 a=-3,

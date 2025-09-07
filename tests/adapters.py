@@ -12,6 +12,7 @@ from torch import Tensor
 
 from cs336_basics import attention
 from cs336_basics import bpe_tokenizer
+from cs336_basics import causal_multi_head_self_attention
 from cs336_basics import embedding
 from cs336_basics import linear
 from cs336_basics import rms_norm
@@ -91,7 +92,9 @@ def run_swiglu(
         Float[Tensor, "... d_model"]: Output embeddings of the same shape as the input embeddings.
     """
     m = swi_glu.SwiGlu(d_model, d_ff)
-    m.load_state_dict({"lin13.W": pack([w1_weight, w3_weight], '* i j')[0], "lin2.W": w2_weight})
+    m.load_state_dict(
+        {"lin13.W": pack([w1_weight, w3_weight], "* i j")[0], "lin2.W": w2_weight}
+    )
     return m.forward(in_features)
 
 
@@ -147,7 +150,16 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    m = causal_multi_head_self_attention.CausalMultiHeadSelfAttention(
+        d_model, num_heads
+    )
+    m.load_state_dict(
+        {
+            "qkv.W": pack([q_proj_weight, k_proj_weight, v_proj_weight], "* i j")[0],
+            "wo.W": o_proj_weight,
+        }
+    )
+    return m.forward(in_features)
 
 
 def run_multihead_self_attention_with_rope(
@@ -187,7 +199,17 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    rope = ro_pe.RotaryPositionalEmbedding(theta, d_model // num_heads, max_seq_len)
+    m = causal_multi_head_self_attention.CausalMultiHeadSelfAttention(
+        d_model, num_heads, rope
+    )
+    m.load_state_dict(
+        {
+            "qkv.W": pack([q_proj_weight, k_proj_weight, v_proj_weight], "* i j")[0],
+            "wo.W": o_proj_weight,
+        }
+    )
+    return m.forward(in_features, token_positions)
 
 
 def run_rope(

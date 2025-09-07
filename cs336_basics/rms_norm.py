@@ -18,7 +18,7 @@ class RMSNorm(nn.Module):
         self.device = device
         self.dtype = dtype
 
-        g = nn.Parameter(torch.ones((d_model,), dtype=dtype))
+        g = nn.Parameter(torch.ones((d_model,), device=device, dtype=dtype))
         self.register_parameter("g", g)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

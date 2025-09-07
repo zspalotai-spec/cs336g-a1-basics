@@ -28,7 +28,7 @@ class Linear(nn.Module):
             m_size = (num_matrices, out_features, in_features)
         W = nn.Parameter(
             nn.init.trunc_normal_(
-                torch.empty(m_size, dtype=dtype),
+                torch.empty(m_size, device=device, dtype=dtype),
                 mean=0.0,
                 std=std,
                 a=-3 * std,
