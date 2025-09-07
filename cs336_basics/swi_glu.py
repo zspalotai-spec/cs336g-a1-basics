@@ -23,16 +23,13 @@ class SwiGlu(nn.Module):
         self.hidden_features = hidden_features
         self.device = device
         self.dtype = dtype
-        lin1 = linear.Linear(in_features, hidden_features)
+        lin13 = linear.Linear(in_features, hidden_features, 2)
         lin2 = linear.Linear(hidden_features, in_features)
-        lin3 = linear.Linear(in_features, hidden_features)
-        self.add_module('lin1', lin1)
+        self.add_module('lin13', lin13)
         self.add_module('lin2', lin2)
-        self.add_module('lin3', lin3)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        w3x = self.lin3.forward(x)
-        w1x = self.lin1.forward(x)
-        siluw1x = silu(w1x)
-        siluw1xw3x = siluw1x.mul(w3x)
+        w13x = self.lin13.forward(x)
+        siluw1x = silu(w13x[0])
+        siluw1xw3x = siluw1x.mul(w13x[1])
         return self.lin2.forward(siluw1xw3x)

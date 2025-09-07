@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from einops import pack
 import os
 from typing import IO, Any, BinaryIO
 from collections.abc import Iterable
@@ -90,7 +91,7 @@ def run_swiglu(
         Float[Tensor, "... d_model"]: Output embeddings of the same shape as the input embeddings.
     """
     m = swi_glu.SwiGlu(d_model, d_ff)
-    m.load_state_dict({"lin1.W": w1_weight, "lin2.W": w2_weight, "lin3.W": w3_weight})
+    m.load_state_dict({"lin13.W": pack([w1_weight, w3_weight], '* i j')[0], "lin2.W": w2_weight})
     return m.forward(in_features)
 
 
