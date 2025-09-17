@@ -10,6 +10,7 @@ import numpy.typing as npt
 import torch
 from torch import Tensor
 
+from cs336_basics import adamw
 from cs336_basics import attention
 from cs336_basics import bpe_tokenizer
 from cs336_basics import causal_multi_head_self_attention
@@ -566,7 +567,7 @@ def get_adamw_cls() -> Any:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    return adamw.AdamW
 
 
 def run_get_lr_cosine_schedule(
