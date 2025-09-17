@@ -13,6 +13,7 @@ from torch import Tensor
 from cs336_basics import attention
 from cs336_basics import bpe_tokenizer
 from cs336_basics import causal_multi_head_self_attention
+from cs336_basics import cross_entropy
 from cs336_basics import embedding
 from cs336_basics import linear
 from cs336_basics import rms_norm
@@ -544,7 +545,7 @@ def run_cross_entropy(
     Returns:
         Float[Tensor, ""]: The average cross-entropy loss across examples.
     """
-    raise NotImplementedError
+    return cross_entropy.cross_entropy(inputs, targets)
 
 
 def run_gradient_clipping(
