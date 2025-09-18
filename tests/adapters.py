@@ -16,6 +16,7 @@ from cs336_basics import bpe_tokenizer
 from cs336_basics import causal_multi_head_self_attention
 from cs336_basics import cross_entropy
 from cs336_basics import embedding
+from cs336_basics import gradient_clipping
 from cs336_basics import linear
 from cs336_basics import lr_cosine_schedule
 from cs336_basics import rms_norm
@@ -561,7 +562,7 @@ def run_gradient_clipping(
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
-    raise NotImplementedError
+    gradient_clipping.clip(parameters, max_l2_norm)
 
 
 def get_adamw_cls() -> Any:
