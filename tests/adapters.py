@@ -17,6 +17,7 @@ from cs336_basics import causal_multi_head_self_attention
 from cs336_basics import cross_entropy
 from cs336_basics import embedding
 from cs336_basics import linear
+from cs336_basics import lr_cosine_schedule
 from cs336_basics import rms_norm
 from cs336_basics import ro_pe
 from cs336_basics import softmax
@@ -595,7 +596,9 @@ def run_get_lr_cosine_schedule(
     Returns:
         Learning rate at the given iteration under the specified schedule.
     """
-    raise NotImplementedError
+    return lr_cosine_schedule.get_learning_rate(
+        it, max_learning_rate, min_learning_rate, warmup_iters, cosine_cycle_iters
+    )
 
 
 def run_save_checkpoint(
