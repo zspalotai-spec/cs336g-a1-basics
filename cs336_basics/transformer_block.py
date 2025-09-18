@@ -41,6 +41,6 @@ class TransformerBlock(nn.Module):
         self.add_module("ff", swi_glu.SwiGlu(d_model, d_ff, device=device, dtype=dtype))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        indices = torch.arange(0, x.size()[-2])
+        indices = torch.arange(0, x.size()[-2], device=self.device)
         y = x + self.attn.forward(self.attn_rms_norm.forward(x), indices)
         return y + self.ff.forward(self.ff_rms_norm.forward(y))

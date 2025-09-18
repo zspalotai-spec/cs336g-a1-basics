@@ -29,6 +29,7 @@ class TransformerLm(nn.Module):
         self.num_heads = num_heads
         self.d_ff = d_ff
         self.rope_theta = rope_theta
+        self.device = device
         self.add_module(
             "rope",
             ro_pe.RotaryPositionalEmbedding(
