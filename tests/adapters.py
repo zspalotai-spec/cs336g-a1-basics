@@ -14,6 +14,7 @@ from cs336_basics import adamw
 from cs336_basics import attention
 from cs336_basics import bpe_tokenizer
 from cs336_basics import causal_multi_head_self_attention
+from cs336_basics import checkpointing
 from cs336_basics import cross_entropy
 from cs336_basics import embedding
 from cs336_basics import get_batch
@@ -619,7 +620,7 @@ def run_save_checkpoint(
             we've completed.
         out (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialize the model, optimizer, and iteration to.
     """
-    raise NotImplementedError
+    checkpointing.save_checkpoint(model, optimizer, iteration, out)
 
 
 def run_load_checkpoint(
@@ -640,7 +641,7 @@ def run_load_checkpoint(
     Returns:
         int: the previously-serialized number of iterations.
     """
-    raise NotImplementedError
+    return checkpointing.load_checkpoint(src, model, optimizer)
 
 
 def get_tokenizer(
