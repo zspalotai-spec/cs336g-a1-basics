@@ -1,3 +1,4 @@
+from datetime import datetime
 import torch
 from torch import nn
 
@@ -6,6 +7,7 @@ from cs336_basics import linear
 from cs336_basics import rms_norm
 from cs336_basics import ro_pe
 from cs336_basics import transformer_block
+from cs336_basics import timer
 
 
 class TransformerLm(nn.Module):
@@ -60,9 +62,12 @@ class TransformerLm(nn.Module):
         )
 
     def forward(self, indices: torch.Tensor) -> torch.Tensor:
-        x = self.embed.forward(indices)
+        x = timer.measure("embed", lambda: self.embed.forward(indices))
+        x = timer.measure("require_grad", lambda: x.requires_grad_(True))
+        timer.start("all_layers")
         for l in range(self.num_layers):
             x = self.get_submodule(f"layer{l}").forward(x)
-        x = self.final_rms_norm.forward(x)
-        y = self.final_linear.forward(x)
+        timer.update("all_layers")
+        x = timer.measure("final_rms", lambda: self.final_rms_norm.forward(x))
+        y = timer.measure("final_linear", lambda: self.final_linear.forward(x))
         return y

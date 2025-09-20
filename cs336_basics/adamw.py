@@ -5,6 +5,7 @@ import math
 
 from cs336_basics import gradient_clipping
 from cs336_basics import lr_cosine_schedule
+from cs336_basics import timer
 
 
 class AdamW(torch.optim.Optimizer):
@@ -48,11 +49,23 @@ class AdamW(torch.optim.Optimizer):
                 beta1_t = state.get("beta1_t", beta1)
                 beta2_t = state.get("beta2_t", beta2)
                 grad = p.grad.data  # Get the gradient of loss with respect to p.
-                m = beta1 * m + (1 - beta1) * grad
-                v = beta2 * v + (1 - beta2) * grad * grad
-                alpha_t = alpha * math.sqrt(1 - beta2_t) / (1 - beta1_t)
-                p.data -= alpha_t * m / (v.sqrt() + eps)
-                p.data -= alpha * lmbda * p.data
+                m = timer.measure(
+                    "adamw_update_m", lambda: beta1 * m + (1 - beta1) * grad
+                )
+                v = timer.measure(
+                    "adamw_update_v", lambda: beta2 * v + (1 - beta2) * grad.pow(2)
+                )
+                alpha_t = timer.measure(
+                    "adamw_alpha_t",
+                    lambda: alpha * math.sqrt(1 - beta2_t) / (1 - beta1_t),
+                )
+                p.data = timer.measure(
+                    "adamw_update_params",
+                    lambda: p.data - alpha_t * m / (v.sqrt() + eps),
+                )
+                p.data = timer.measure(
+                    "adamw_weight_decay", lambda: p.data - alpha * lmbda * p.data
+                )
                 state["t"] = t + 1  # Increment iteration number.
                 state["m"] = m
                 state["v"] = v
@@ -73,6 +86,7 @@ class AdamWextra(AdamW):
         weight_decay=1e-3,
         betas=(0.9, 0.95),
         eps=1e-8,
+        device=None,
     ):
         super().__init__(
             params,
@@ -85,7 +99,10 @@ class AdamWextra(AdamW):
                 "alpha_min": lr_min,
                 "t_w": t_w,
                 "t_c": t_c,
-                "max_gradient_norm": max_gradient_norm,
+                "max_gradient_norm": torch.as_tensor(
+                    [max_gradient_norm], device=device
+                ),
+                "gradient_clipping_eps": torch.as_tensor([1e-6], device=device),
             },
         )
 
@@ -96,11 +113,20 @@ class AdamWextra(AdamW):
             t_w = group["t_w"]
             t_c = group["t_c"]
             max_gradient_norm = group["max_gradient_norm"]
-            gradient_clipping.clip(group["params"], max_gradient_norm)
+            gradient_clipping_eps = group["gradient_clipping_eps"]
+            timer.measure(
+                "adamw_gradient_clipping",
+                lambda: gradient_clipping.clip(
+                    group["params"], max_gradient_norm, gradient_clipping_eps
+                ),
+            )
             for p in group["params"]:
                 state = self.state[p]
                 t = state.get("t", 0)
-                state["alpha"] = lr_cosine_schedule.get_learning_rate(
-                    t, alpha_max, alpha_min, t_w, t_c
+                state["alpha"] = timer.measure(
+                    "adamw_lr_schedule",
+                    lambda: lr_cosine_schedule.get_learning_rate(
+                        t, alpha_max, alpha_min, t_w, t_c
+                    ),
                 )
         return super().step(closure)

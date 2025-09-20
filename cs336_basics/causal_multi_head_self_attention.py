@@ -5,6 +5,7 @@ import torch
 from cs336_basics import attention
 from cs336_basics import linear
 from cs336_basics import ro_pe
+from cs336_basics import timer
 
 
 class CausalMultiHeadSelfAttention(nn.Module):
@@ -32,21 +33,41 @@ class CausalMultiHeadSelfAttention(nn.Module):
     def forward(
         self, x: torch.Tensor, token_positions: torch.Tensor | None = None
     ) -> torch.Tensor:
-        qkvx = self.qkv.forward(x)
-        qkvx_heads = rearrange(
-            qkvx, "... seq_len (h d_h)-> ... h seq_len d_h", h=self.num_heads
+        qkvx = timer.measure("attn_qkv", lambda: self.qkv.forward(x))
+        qkvx_heads = timer.measure(
+            "attn_qkv_headsreshape",
+            lambda: rearrange(
+                qkvx, "... seq_len (h d_h)-> ... h seq_len d_h", h=self.num_heads
+            ),
         )
         if self.has_rope:
-            qkvx_heads[0] = self.rope(qkvx_heads[0], token_positions)
-            qkvx_heads[1] = self.rope(qkvx_heads[1], token_positions)
+            qkvx_heads[0] = timer.measure(
+                "attn_rope", lambda: self.rope(qkvx_heads[0], token_positions)
+            )
+            qkvx_heads[1] = timer.measure(
+                "attn_rope", lambda: self.rope(qkvx_heads[1], token_positions)
+            )
+        timer.start("attn_size_compute")
         x_size = x.size()
         seq_len = x_size[-2]
-        mask_size = list(x_size[:-2]) + [self.num_heads, seq_len,seq_len]
-        mask = torch.tril(torch.ones(mask_size, device=self.device, dtype=torch.bool))
-        qkvx_heads_attention = attention.attention(
-            qkvx_heads[0], qkvx_heads[1], qkvx_heads[2], mask
+        mask_size = list(x_size[:-2]) + [self.num_heads, seq_len, seq_len]
+        timer.update("attn_size_compute")
+        mask = timer.measure(
+            "attn_create_mask",
+            lambda: torch.tril(
+                torch.ones(mask_size, device=x.device)
+            ),
         )
-        qkvx_attention = rearrange(
-            qkvx_heads_attention, "... h seq_len d_h -> ... seq_len (h d_h)"
+        qkvx_heads_attention = timer.measure(
+            "attn_attention",
+            lambda: attention.attention(
+                qkvx_heads[0], qkvx_heads[1], qkvx_heads[2], mask
+            ),
         )
-        return self.wo.forward(qkvx_attention)
+        qkvx_attention = timer.measure(
+            "attn_attention_dmodelreshape",
+            lambda: rearrange(
+                qkvx_heads_attention, "... h seq_len d_h -> ... seq_len (h d_h)"
+            ),
+        )
+        return timer.measure("attn_ff_out", lambda: self.wo.forward(qkvx_attention))

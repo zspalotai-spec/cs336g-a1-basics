@@ -48,9 +48,13 @@ def run_linear(
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
 
-    m = linear.Linear(d_in, d_out)
-    m.load_state_dict({"W": weights})
-    return m.forward(in_features)
+    device = torch.device('mps')
+    m = linear.Linear(d_in, d_out, device=device)
+    m.load_state_dict({"W": weights.to(device)})
+    m = torch.compile(m, backend="aot_eager")
+    data = in_features.to(device)
+    res = m.forward(data)
+    return res.to(in_features.device)
 
 
 def run_embedding(
@@ -72,9 +76,11 @@ def run_embedding(
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
 
-    m = embedding.Embedding(vocab_size, d_model)
-    m.load_state_dict({"W": weights})
-    return m.forward(token_ids)
+    device = torch.device('mps')
+    m = embedding.Embedding(vocab_size, d_model, device=device)
+    m.load_state_dict({"W": weights.to(device)})
+    m = torch.compile(m, backend="aot_eager")
+    return m.forward(token_ids.to(device)).to(token_ids.device)
 
 
 def run_swiglu(
@@ -99,11 +105,13 @@ def run_swiglu(
     Returns:
         Float[Tensor, "... d_model"]: Output embeddings of the same shape as the input embeddings.
     """
-    m = swi_glu.SwiGlu(d_model, d_ff)
+    device = torch.device("mps")
+    m = swi_glu.SwiGlu(d_model, d_ff, device=device)
     m.load_state_dict(
-        {"lin13.W": pack([w1_weight, w3_weight], "* i j")[0], "lin2.W": w2_weight}
+        {"lin13.W": pack([w1_weight, w3_weight], "* i j")[0].to(device), "lin2.W": w2_weight.to(device)}
     )
-    return m.forward(in_features)
+    m = torch.compile(m, backend="aot_eager")
+    return m.forward(in_features.to(device)).to(in_features.device)
 
 
 def run_scaled_dot_product_attention(
@@ -158,16 +166,18 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
+    device = torch.device("mps")
     m = causal_multi_head_self_attention.CausalMultiHeadSelfAttention(
-        d_model, num_heads
+        d_model, num_heads, device=device
     )
     m.load_state_dict(
         {
-            "qkv.W": pack([q_proj_weight, k_proj_weight, v_proj_weight], "* i j")[0],
-            "wo.W": o_proj_weight,
+            "qkv.W": pack([q_proj_weight, k_proj_weight, v_proj_weight], "* i j")[0].to(device),
+            "wo.W": o_proj_weight.to(device),
         }
     )
-    return m.forward(in_features)
+    m = torch.compile(m, backend="aot_eager")
+    return m.forward(in_features.to(device)).to(in_features.device)
 
 
 def run_multihead_self_attention_with_rope(
@@ -207,17 +217,19 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    rope = ro_pe.RotaryPositionalEmbedding(theta, d_model // num_heads, max_seq_len)
+    device = torch.device("mps")
+    rope = ro_pe.RotaryPositionalEmbedding(theta, d_model // num_heads, max_seq_len, device=device)
     m = causal_multi_head_self_attention.CausalMultiHeadSelfAttention(
-        d_model, num_heads, rope
+        d_model, num_heads, rope, device=device
     )
     m.load_state_dict(
         {
-            "qkv.W": pack([q_proj_weight, k_proj_weight, v_proj_weight], "* i j")[0],
-            "wo.W": o_proj_weight,
+            "qkv.W": pack([q_proj_weight, k_proj_weight, v_proj_weight], "* i j")[0].to(device),
+            "wo.W": o_proj_weight.to(device),
         }
     )
-    return m.forward(in_features, token_positions)
+    m = torch.compile(m, backend="aot_eager")
+    return m.forward(in_features.to(device), token_positions.to(device)).to(in_features.device)
 
 
 def run_rope(
@@ -239,8 +251,10 @@ def run_rope(
     Returns:
         Float[Tensor, " ... sequence_length d_k"]: Tensor with RoPEd input.
     """
-    m = ro_pe.RotaryPositionalEmbedding(theta, d_k, max_seq_len)
-    return m.forward(in_query_or_key, token_positions)
+    device = torch.device("mps")
+    m = ro_pe.RotaryPositionalEmbedding(theta, d_k, max_seq_len, device=device)
+    m = torch.compile(m, backend="aot_eager")
+    return m.forward(in_query_or_key.to(device), token_positions.to(device)).to(in_query_or_key.device)
 
 
 def run_transformer_block(
@@ -313,8 +327,9 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    rope = ro_pe.RotaryPositionalEmbedding(theta, d_model // num_heads, max_seq_len)
-    m = transformer_block.TransformerBlock(d_model, num_heads, d_ff, rope)
+    device = torch.device("mps")
+    rope = ro_pe.RotaryPositionalEmbedding(theta, d_model // num_heads, max_seq_len, device=device)
+    m = transformer_block.TransformerBlock(d_model, num_heads, d_ff, rope, device=device)
     m.load_state_dict(
         {
             "attn.qkv.W": pack(
@@ -324,17 +339,18 @@ def run_transformer_block(
                     weights["attn.v_proj.weight"],
                 ],
                 "* i j",
-            )[0],
-            "attn.wo.W": weights["attn.output_proj.weight"],
-            "attn_rms_norm.g": weights["ln1.weight"],
+            )[0].to(device),
+            "attn.wo.W": weights["attn.output_proj.weight"].to(device),
+            "attn_rms_norm.g": weights["ln1.weight"].to(device),
             "ff.lin13.W": pack(
                 [weights["ffn.w1.weight"], weights["ffn.w3.weight"]], "* i j"
-            )[0],
-            "ff.lin2.W": weights["ffn.w2.weight"],
-            "ff_rms_norm.g": weights["ln2.weight"],
+            )[0].to(device),
+            "ff.lin2.W": weights["ffn.w2.weight"].to(device),
+            "ff_rms_norm.g": weights["ln2.weight"].to(device),
         }
     )
-    return m.forward(in_features)
+    m = torch.compile(m, backend="aot_eager")
+    return m.forward(in_features.to(device)).to(in_features.device)
 
 
 def run_transformer_lm(
@@ -416,11 +432,12 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
+    device = torch.device("mps")
     m = transformer_lm.TransformerLm(
-        vocab_size, context_length, d_model, num_layers, num_heads, d_ff, rope_theta
+        vocab_size, context_length, d_model, num_layers, num_heads, d_ff, rope_theta, device=device
     )
     state_dict = {}
-    state_dict["embed.W"] = weights["token_embeddings.weight"]
+    state_dict["embed.W"] = weights["token_embeddings.weight"].to(device)
     for l in range(num_layers):
         m_key_prefix = f"layer{l}."
         weights_prefix = f"layers.{l}."
@@ -433,28 +450,29 @@ def run_transformer_lm(
                         weights[f"{weights_prefix}attn.v_proj.weight"],
                     ],
                     "* i j",
-                )[0],
+                )[0].to(device),
                 f"{m_key_prefix}attn.wo.W": weights[
                     f"{weights_prefix}attn.output_proj.weight"
-                ],
+                ].to(device),
                 f"{m_key_prefix}attn_rms_norm.g": weights[
                     f"{weights_prefix}ln1.weight"
-                ],
+                ].to(device),
                 f"{m_key_prefix}ff.lin13.W": pack(
                     [
                         weights[f"{weights_prefix}ffn.w1.weight"],
                         weights[f"{weights_prefix}ffn.w3.weight"],
                     ],
                     "* i j",
-                )[0],
-                f"{m_key_prefix}ff.lin2.W": weights[f"{weights_prefix}ffn.w2.weight"],
-                f"{m_key_prefix}ff_rms_norm.g": weights[f"{weights_prefix}ln2.weight"],
+                )[0].to(device),
+                f"{m_key_prefix}ff.lin2.W": weights[f"{weights_prefix}ffn.w2.weight"].to(device),
+                f"{m_key_prefix}ff_rms_norm.g": weights[f"{weights_prefix}ln2.weight"].to(device),
             }
         )
-    state_dict["final_rms_norm.g"] = weights["ln_final.weight"]
-    state_dict["final_linear.W"] = weights["lm_head.weight"]
+    state_dict["final_rms_norm.g"] = weights["ln_final.weight"].to(device)
+    state_dict["final_linear.W"] = weights["lm_head.weight"].to(device)
     m.load_state_dict(state_dict)
-    return m.forward(in_indices)
+    m = torch.compile(m, backend="aot_eager")
+    return m.forward(in_indices.to(device)).to(in_indices.device)
 
 
 def run_rmsnorm(
@@ -477,9 +495,11 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    m = rms_norm.RMSNorm(d_model, eps)
-    m.load_state_dict({"g": weights})
-    return m.forward(in_features)
+    device = torch.device("mps")
+    m = rms_norm.RMSNorm(d_model, eps, device=device)
+    m.load_state_dict({"g": weights.to(device)})
+    m = torch.compile(m, backend="aot_eager")
+    return m.forward(in_features.to(device)).to(in_features.device)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
@@ -564,7 +584,7 @@ def run_gradient_clipping(
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
-    gradient_clipping.clip(parameters, max_l2_norm)
+    gradient_clipping.clip(parameters, torch.tensor([max_l2_norm]), 1e-6)
 
 
 def get_adamw_cls() -> Any:

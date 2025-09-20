@@ -1,14 +1,17 @@
+from einops import reduce
 import torch
 
 
+def gather_values(input, target):
+    return input.gather(dim=-1, index=target.view(list(target.size())+[1]))
+
 def cross_entropy(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    input_max, _ = torch.max(input, dim=-1, keepdim=True)
-    input_normed = input - input_max
-    input_exp = torch.exp(input_normed)
-    input_exp_sum = torch.sum(input_exp, dim=-1, keepdim=True)
-    input_exp_sum_log = torch.log(input_exp_sum) + input_max
-    # writes 1s to the indices in target in an input sized mask matrix
-    mask = torch.zeros_like(input).scatter_(dim=-1, index=target.reshape(list(target.size())+[1]), value=1)==1
-    input_target = input[mask]
-    p = input_target - input_exp_sum_log
-    return torch.mean(-p)
+    input_max = reduce(input, '... last -> ... 1', 'max')
+    input_normed_exp = input - input_max
+    input_normed_exp.exp_()
+    input_exp_sum_log = reduce(input_normed_exp, '... last -> ... 1', 'sum')
+    input_exp_sum_log.log_()
+    input_exp_sum_log.add_(input_max)
+    masked_values = gather_values(input, target)
+    p =  input_exp_sum_log - masked_values
+    return reduce(p, '... -> 1', 'mean')

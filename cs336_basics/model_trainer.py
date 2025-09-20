@@ -5,6 +5,7 @@ from cs336_basics import adamw
 from cs336_basics import cross_entropy
 from cs336_basics import get_batch
 from cs336_basics import transformer_lm
+from cs336_basics import timer
 
 
 def initialize_model(
@@ -56,15 +57,16 @@ def initialize_optimizer(
         weight_decay=weight_decay,
         betas=betas,
         eps=eps,
+        device=model.device,
     )
 
 
 def train_one_step(training_inputs, training_targets, model, optimizer):
-    optimizer.zero_grad()
-    outputs = model.forward(training_inputs)
-    loss = loss_fn(outputs, training_targets)
-    loss.backward()
-    optimizer.step()
+    timer.measure("zero_grad", lambda: optimizer.zero_grad(set_to_none=True))
+    outputs = timer.measure("forward", lambda: model.forward(training_inputs))
+    loss = timer.measure("loss", lambda: loss_fn(outputs, training_targets))
+    timer.measure("backward", loss.backward)
+    timer.measure("optmize", optimizer.step)
     return loss
 
 
@@ -77,18 +79,30 @@ def validate(model, validation_inputs, validation_targets):
 
 
 def train_n_steps_and_validate(
-    x: np.typing.NDArray, batch_size: int, num_steps: int, model, optimizer
+    x: np.typing.NDArray, batch_size: int, validation_batch_size: int, num_steps: int, model, optimizer
 ):
     running_loss = None
     for _ in range(num_steps):
-        inputs, targets = get_batch.get_batch(x, batch_size, model.context_length, model.device)
-        loss = train_one_step(inputs, targets, model, optimizer)
+        inputs, targets = timer.measure(
+            "get_batch",
+            lambda: get_batch.get_batch(
+                x, batch_size, model.context_length, model.device
+            ),
+        )
+        loss = timer.measure(
+            "train_one_step", lambda: train_one_step(inputs, targets, model, optimizer)
+        )
         if running_loss is None:
             running_loss = loss
         else:
             running_loss += loss
-        print(".")
     mean_loss = running_loss / num_steps
-    inputs, targets = get_batch.get_batch(x, batch_size, model.context_length, model.device)
-    perplexity, validation_loss = validate(model, inputs, targets)
+    inputs, targets = timer.measure(
+        "get_batch",
+        lambda: get_batch.get_batch(x, validation_batch_size, model.context_length, model.device),
+    )
+    perplexity, validation_loss = timer.measure(
+        "validate", lambda: validate(model, inputs, targets)
+    )
+
     return perplexity, validation_loss, mean_loss
