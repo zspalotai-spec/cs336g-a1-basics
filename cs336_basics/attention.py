@@ -6,6 +6,25 @@ from cs336_basics import softmax
 from cs336_basics import timer
 
 
+def causal_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+    timer.start("attention_size_compute")
+    q_size = q.size()
+    d_k = q_size[-1]
+    timer.update("attention_size_compute")
+    k_normed = timer.measure("k_normed", lambda: k * math.sqrt(1.0 / d_k))
+    qkt_normed = timer.measure(
+        "attention_qkt", lambda: einsum(q, k_normed, "... n d_k, ... m d_k -> ... n m")
+    )
+    qkt_normed = timer.measure(
+        "attention_softmax", lambda: softmax.causal_softmax(qkt_normed)
+    )
+    out = timer.measure(
+        "attention_out",
+        lambda: einsum(qkt_normed, v, "... n m, ... m d_v -> ... n d_v"),
+    )
+    return out
+
+
 def attention(
     q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor | None = None
 ) -> torch.Tensor:
@@ -17,7 +36,7 @@ def attention(
     qkt_normed = timer.measure(
         "attention_qkt", lambda: einsum(q, k_normed, "... n d_k, ... m d_k -> ... n m")
     )
-    #if mask is not None:
+    # if mask is not None:
     #    mask_not = mask.logical_not().float()
     #    mask = mask.float()
     #    qkt_normed = timer.measure(

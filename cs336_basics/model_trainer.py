@@ -72,19 +72,25 @@ def train_one_step(training_inputs, training_targets, model, optimizer):
 
 def validate(model, validation_inputs, validation_targets):
     with torch.no_grad():
-        outputs = model.forward(validation_inputs)
-        loss = loss_fn(outputs, validation_targets)
-    perplexity = torch.exp(torch.mean(loss))
-    return perplexity, loss
+        outputs = timer.measure("validation_forward", lambda: model.forward(validation_inputs))
+        loss = timer.measure("validation_loss", lambda: loss_fn(outputs, validation_targets))
+    return loss
 
 
 def train_n_steps_and_validate(
-    x: np.typing.NDArray, batch_size: int, validation_batch_size: int, num_steps: int, model, optimizer
+    x: np.typing.NDArray,
+    batch_size: int,
+    num_steps: int,
+    x_valid: np.typing.NDArray,
+    validation_batch_size: int,
+    num_valid_step: int,
+    model,
+    optimizer,
 ):
-    running_loss = None
+    training_loss = None
     for _ in range(num_steps):
         inputs, targets = timer.measure(
-            "get_batch",
+            "train_get_batch",
             lambda: get_batch.get_batch(
                 x, batch_size, model.context_length, model.device
             ),
@@ -92,17 +98,26 @@ def train_n_steps_and_validate(
         loss = timer.measure(
             "train_one_step", lambda: train_one_step(inputs, targets, model, optimizer)
         )
-        if running_loss is None:
-            running_loss = loss
+        if training_loss is None:
+            training_loss = loss
         else:
-            running_loss += loss
-    mean_loss = running_loss / num_steps
-    inputs, targets = timer.measure(
-        "get_batch",
-        lambda: get_batch.get_batch(x, validation_batch_size, model.context_length, model.device),
-    )
-    perplexity, validation_loss = timer.measure(
-        "validate", lambda: validate(model, inputs, targets)
-    )
+            training_loss += loss
+    training_loss /= num_steps
+    validation_loss = None
+    for _ in range(num_valid_step):
+        inputs, targets = timer.measure(
+            "validation_get_batch",
+            lambda: get_batch.get_batch(
+                x_valid, validation_batch_size, model.context_length, model.device
+            ),
+        )
+        act_validation_loss = timer.measure(
+            "validate", lambda: validate(model, inputs, targets)
+        )
+        if validation_loss is None:
+            validation_loss = act_validation_loss
+        else:
+            validation_loss += act_validation_loss
+    validation_loss /= num_valid_step
 
-    return perplexity, validation_loss, mean_loss
+    return validation_loss, training_loss

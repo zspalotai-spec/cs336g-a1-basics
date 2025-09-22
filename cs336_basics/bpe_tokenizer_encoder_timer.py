@@ -7,14 +7,14 @@ from cs336_basics import pretokenization_example
 from cs336_basics import token_utils
 
 if __name__ == "__main__":
-    VOCAB_PREFIX = "../data/owt_train."
+    VOCAB_PREFIX = "../data/TinyStoriesV2-GPT4-train."
     vocab, merges = token_utils.load_vocab_and_merges(
         vocab_path=VOCAB_PREFIX + "vocab",
         merges_path=VOCAB_PREFIX + "merges",
     )
     tokenizer = bpe_tokenizer.BPETokenizer(vocab, merges, ["<|endoftext|>"])
 
-    FILE_PREFIX = VOCAB_PREFIX
+    FILE_PREFIX = "../data/TinyStoriesV2-GPT4-valid."
     file_size = os.path.getsize(FILE_PREFIX + "txt")
     DESIRED_CHUNK_SIZE = pow(2, 30)
     num_chunks = int((file_size + DESIRED_CHUNK_SIZE - 1) / DESIRED_CHUNK_SIZE)

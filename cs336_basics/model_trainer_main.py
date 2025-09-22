@@ -1,12 +1,10 @@
-from torch.profiler import profile
-from torch.profiler import ProfilerActivity
-
 import argparse
 from datetime import datetime
 import numpy as np
 import os
 import random
 import torch
+import wandb
 
 from cs336_basics import checkpointing
 from cs336_basics import model_trainer
@@ -14,6 +12,7 @@ from cs336_basics import timer
 
 
 def main():
+    wandb.login()
     seed = 0
     torch.manual_seed(seed)
     torch.mps.manual_seed(seed)
@@ -33,18 +32,20 @@ def main():
                 "and/or you do not have an MPS-enabled device on this machine."
             )
             return
-        
-    print(torch.mps.device_count(), torch.mps.recommended_max_memory()/pow(2,30))
+
+    print(torch.mps.device_count(), torch.mps.recommended_max_memory() / pow(2, 30))
 
     parser = argparse.ArgumentParser(prog="model_trainer")
-    parser.add_argument("--data_src")
+    parser.add_argument("--training_data_src")
+    parser.add_argument("--validation_data_src")
     parser.add_argument("--vocab_size", type=int)
     parser.add_argument("--checkpoint_dir")
     parser.add_argument("--input_length", type=int, default=0)
     parser.add_argument("--device", default="mps")
     parser.add_argument("--checkpoint_to_load", default="")
-    parser.add_argument("--report_counts", type=int, default=400)
-    parser.add_argument("--reporting_step_count", type=int, default=50)
+    parser.add_argument("--report_counts", type=int, default=200)
+    parser.add_argument("--reporting_step_count", type=int, default=100)
+    parser.add_argument("--validation_step_count", type=int, default=25)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--validation_batch_size", type=int, default=32)
     parser.add_argument("--context_length", type=int, default=256)
@@ -54,11 +55,11 @@ def main():
     parser.add_argument("--d_ff", type=int, default=1344)
     parser.add_argument("--rope_theta", default=10000.0)
     parser.add_argument("--lr_max", default=5e-4)
-    parser.add_argument("--lr_min", default=1e-6)
-    parser.add_argument("--t_w", type=int, default=200)
+    parser.add_argument("--lr_min", default=5e-7)
+    parser.add_argument("--t_w", type=int, default=4000)
     parser.add_argument("--t_c", type=int, default=-1)
     parser.add_argument("--max_gradient_norm", default=1.0)
-    parser.add_argument("--weight_decay", default=1e-3)
+    parser.add_argument("--weight_decay", default=1e-1)
     parser.add_argument("--beta1", default=0.9)
     parser.add_argument("--beta2", default=0.95)
     parser.add_argument("--adamw_eps", default=1e-8)
@@ -68,6 +69,11 @@ def main():
 
     if args.t_c == -1:
         args.t_c = args.report_counts * args.reporting_step_count
+
+    wandb_run = wandb.init(
+        project=args.checkpoint_dir,
+        config=vars(args),
+    )
 
     device = torch.device(args.device)
     if args.device == "cpu":
@@ -109,13 +115,17 @@ def main():
         pass
         # model = torch.compile(model)
     else:
-        #pass
-        timer.DEBUG = False
-        #model = torch.compile(model, backend="aot_eager")
+        pass
+        # timer.DEBUG = False
+        # model = torch.compile(model, backend="aot_eager")
 
-    x = np.load(args.data_src, mmap_mode="r").astype(np.int64)
+    x = np.load(args.training_data_src, mmap_mode="r").astype(np.int64)
     if args.input_length > 0:
-        x = x[:args.input_length]
+        x = x[: args.input_length]
+
+    x_valid = np.load(args.validation_data_src, mmap_mode="r").astype(np.int64)
+    if args.input_length > 0:
+        x_valid = x_valid[: args.input_length]
 
     checkpoint_dir = os.path.join(
         args.checkpoint_dir, datetime.now().strftime("%Y%m%d%H%M%S")
@@ -129,19 +139,24 @@ def main():
 
     while current_step < args.report_counts * args.reporting_step_count:
         time1 = datetime.now()
-        perplexity, validation_loss, training_loss = timer.measure(
+        validation_loss, training_loss = timer.measure(
             "train_n_step",
             lambda: model_trainer.train_n_steps_and_validate(
                 x,
                 args.batch_size,
-                args.validation_batch_size,
                 args.reporting_step_count,
+                x_valid,
+                args.validation_batch_size,
+                args.validation_step_count,
                 model,
                 optimizer,
             ),
         )
+        wandb_run.log(
+            {"training_loss": training_loss, "validation_loss": validation_loss}
+        )
         current_step += args.reporting_step_count
-        print(current_step, perplexity, validation_loss, training_loss)
+        print(current_step, validation_loss, training_loss)
         timer.measure(
             "checkpointing",
             lambda: checkpointing.save_checkpoint(
@@ -151,7 +166,7 @@ def main():
                 os.path.join(checkpoint_dir, f"ckp_{current_step}.ckp"),
             ),
         )
-        print(datetime.now()-time1)
+        print(datetime.now() - time1)
 
     print(timer.get_times_str())
 

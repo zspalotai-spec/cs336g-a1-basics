@@ -45,9 +45,13 @@ class TransformerBlock(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         indices = None
         if self.has_rope:
-            indices = timer.measure(
-                "get_rope_indices", lambda: self.indices[0 : x.size()[-2]]
-            )
+            x_size = x.size()
+            if x_size[-2] == self.attn.rope.max_seq_len:
+                indices = self.indices
+            else:
+                indices = timer.measure(
+                    "get_rope_indices", lambda: self.indices[0 : x.size()[-2]]
+                )
         x_normed = timer.measure(
             "block_input_rms", lambda: self.attn_rms_norm.forward(x)
         )

@@ -52,16 +52,16 @@ class CausalMultiHeadSelfAttention(nn.Module):
         seq_len = x_size[-2]
         mask_size = list(x_size[:-2]) + [self.num_heads, seq_len, seq_len]
         timer.update("attn_size_compute")
-        mask = timer.measure(
-            "attn_create_mask",
-            lambda: torch.tril(
-                torch.ones(mask_size, device=x.device)
-            ),
-        )
+        # mask = timer.measure(
+        #    "attn_create_mask",
+        #    lambda: torch.tril(
+        #        torch.ones(mask_size, device=x.device)
+        #    ),
+        # )
         qkvx_heads_attention = timer.measure(
             "attn_attention",
-            lambda: attention.attention(
-                qkvx_heads[0], qkvx_heads[1], qkvx_heads[2], mask
+            lambda: attention.causal_attention(
+                qkvx_heads[0], qkvx_heads[1], qkvx_heads[2]
             ),
         )
         qkvx_attention = timer.measure(

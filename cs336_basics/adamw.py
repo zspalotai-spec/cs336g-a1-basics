@@ -37,6 +37,7 @@ class AdamW(torch.optim.Optimizer):
             beta2 = group["beta2"]
             eps = group["eps"]
             lmbda = group["lambda"]
+            gradient_scale = group.get("gradient_scale", None)
             for p in group["params"]:
                 if p.grad is None:
                     continue
@@ -44,16 +45,27 @@ class AdamW(torch.optim.Optimizer):
                 if "alpha" in state:
                     alpha = state.get("alpha")
                 t = state.get("t", 0)
-                m = state.get("m", torch.zeros_like(p.data))
-                v = state.get("v", torch.zeros_like(p.data))
+                if "m" in state:
+                    m = state.get("m")
+                else:
+                    m = torch.zeros_like(p.data)
+                if "v" in state:
+                    v = state.get("v")
+                else:
+                    v = torch.zeros_like(p.data)
                 beta1_t = state.get("beta1_t", beta1)
                 beta2_t = state.get("beta2_t", beta2)
                 grad = p.grad.data  # Get the gradient of loss with respect to p.
+                if gradient_scale is not None:
+                    grad = timer.measure(
+                        "adamw_gradient_scale", lambda: gradient_scale * grad
+                    )
                 m = timer.measure(
                     "adamw_update_m", lambda: beta1 * m + (1 - beta1) * grad
                 )
                 v = timer.measure(
-                    "adamw_update_v", lambda: beta2 * v + (1 - beta2) * grad.pow(2)
+                    "adamw_update_v",
+                    lambda: beta2 * v + (1 - beta2) * grad.pow(2),
                 )
                 alpha_t = timer.measure(
                     "adamw_alpha_t",
@@ -114,12 +126,17 @@ class AdamWextra(AdamW):
             t_c = group["t_c"]
             max_gradient_norm = group["max_gradient_norm"]
             gradient_clipping_eps = group["gradient_clipping_eps"]
-            timer.measure(
-                "adamw_gradient_clipping",
-                lambda: gradient_clipping.clip(
-                    group["params"], max_gradient_norm, gradient_clipping_eps
+            norm = timer.measure(
+                "gradient_clipping_compute_norm",
+                lambda: gradient_clipping.compute_norm(group["params"]),
+            )
+            scale = timer.measure(
+                "gradient_clipping_compute_scale",
+                lambda: gradient_clipping.compute_scale(
+                    norm, max_gradient_norm, gradient_clipping_eps
                 ),
             )
+            group["gradient_scale"] = scale
             for p in group["params"]:
                 state = self.state[p]
                 t = state.get("t", 0)
