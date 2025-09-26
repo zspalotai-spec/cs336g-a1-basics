@@ -4,14 +4,13 @@ import os
 import random
 import torch
 
+from cs336_basics import bpe_tokenizer
 from cs336_basics import model_inference
-from cs336_basics import get_batch
-from cs336_basics import model_trainer
 from cs336_basics import timer
 
 
 def main():
-    seed = 0
+    seed = 1000
     torch.manual_seed(seed)
     torch.mps.manual_seed(seed)
     np.random.seed(seed)
@@ -33,35 +32,42 @@ def main():
 
     print(torch.mps.device_count(), torch.mps.recommended_max_memory() / pow(2, 30))
 
-    parser = argparse.ArgumentParser(prog="model_trainer")
-    parser.add_argument("--data_src")
+    parser = argparse.ArgumentParser(prog="model_inference")
+    parser.add_argument("--tokenizer_vocab")
+    parser.add_argument("--tokenizer_merges")
     parser.add_argument("--checkpoint_dir")
     parser.add_argument("--step_to_load")
-    parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--num_batches", type=int, default=1000)
+    parser.add_argument("--prompt")
+    parser.add_argument("--max_tokens", type=int, default=200)
+    parser.add_argument("--temperature", type=float, default=1.5)
+    parser.add_argument("--cumumlative_probability_threshold", type=float, default=0.1)
     args = parser.parse_args()
 
     print(str(args))
 
-    model, _, _ = model_inference.load_model_from_checkpoint(args.checkpoint_dir, args.step_to_load)
+    tokenizer = bpe_tokenizer.BPETokenizer.from_files(
+        args.tokenizer_vocab, args.tokenizer_merges
+    )
 
-    x = np.load(args.data_src, mmap_mode="r").astype(np.int64)
+    model, _, _ = model_inference.load_model_from_checkpoint(
+        args.checkpoint_dir, args.step_to_load
+    )
 
-    total_loss = 0
-    for idx in range(args.num_batches):
-        inputs, targets = get_batch.get_batch(
-            x, args.batch_size, model.context_length, model.device
-        )
-        _, loss = timer.measure(
-            "train_n_step",
-            lambda: model_trainer.validate(model, inputs, targets),
-        )
-        total_loss += loss.item()
-        if idx % 10 == 0:
-            print(total_loss / (idx + 1))
+    response = timer.measure(
+        "inference",
+        lambda: model_inference.inference(
+            model,
+            tokenizer,
+            args.prompt,
+            args.max_tokens,
+            args.temperature,
+            args.cumumlative_probability_threshold,
+        ),
+    )
 
-    print(total_loss / args.num_batches)
     print(timer.get_times_str())
+
+    print(response)
 
 
 if __name__ == "__main__":
